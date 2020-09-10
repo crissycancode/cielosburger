@@ -6,7 +6,7 @@ include_once('main/connect.php');
  
 ?>
 <!-- Refresher-->
-<script src="http://code.jquery.com/jquery-latest.js"></script>
+<script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
 <script>
   $(document).ready(function(){
     setInterval(function() {
