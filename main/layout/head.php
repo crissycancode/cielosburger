@@ -46,7 +46,7 @@
     <link rel="stylesheet" href="assets/dist/css/skins/_all-skins.min.css">
 
     <!--Refresh JS -->
-    <script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
 
 
     <!-- Google Font -->
