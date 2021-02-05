@@ -18,29 +18,6 @@ include_once('layout/sidebar.php');
     <div class="row">
       <div class="col-xs-12"> 
         <div class="box box-warning">
-          <div class="box-header">
-            <!-- /result -->
-            <a class="box-title">  <?php if(isset($_GET['r'])): ?>
-              <?php
-              $r = $_GET['r'];
-              if($r=='added'){
-                $classs='success';   
-              }else if($r=='updated'){
-                $classs='info';   
-              }else if($r=='deleted'){
-                $classs='danger';   
-              }else{
-                $classs='hide';
-              }
-              ?>
-              <div class="alert alert-<?php echo $classs?> <?php echo $classs; ?>">
-                <strong>Successfully <?php echo $r; ?>!</strong>    
-              </div>
-            <?php endif; ?></a> 
-             
-          </div> 
-
-          <!-- /.box-header -->
           <div class="box-body">
             <table id="example1" class="table table-bordered table-striped">
               <thead>

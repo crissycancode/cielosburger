@@ -1,294 +1,206 @@
 <?php
-include_once('../connect.php');
-date_default_timezone_set('Asia/Manila');
-$dt = date('Y-m-d h:i:s');
-$dtl = date('Y-m-d h:i:sa');
+  include_once('../connect.php');
+//   date_default_timezone_set('Asia/Manila');
+//   $dt = date('Y-m-d h:i:s');
+//   $dtl = date('Y-m-d h:i:sa');
 
-function dob($birthday)
-{
-    list($day, $month, $year) = explode("/", $birthday);
-    $year_diff = date("Y") - $year;
-    $month_diff = date("m") - $month;
-    $day_diff = date("d") - $day;
-    if ($day_diff < 0 || $month_diff < 0)
-        $year_diff--;
-    return $year_diff;
-}
+//auto logout
+//   if(!isset($userID)){
+//     $_SESSION['logged_in'] = "false";
+//     session_destroy();
+//     echo "<script type='text/javascript'>window.location.replace('http://www.cielosburger.online');</script>";
+//     exit();
+//   }
+ 
+// user login
+  if($_GET['do'] == 'login'){ 
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+    
+    $dashofsalt = "randomkindofburger";
+    $password = md5($dashofsalt.$password);
+    $password = sha1($password);
+    $password = crypt($password,$dashofsalt);
+    
+    $_SESSION['att'] = 0; //maybe should delete
+    
+    $result = $db->prepare("SELECT * , CONCAT(fname,' ',lname) fullname FROM tbl_users WHERE username = '$username' AND password = '$password'");
+    $result->execute();
+    
+    if($row = $result->fetch()){ 
+        if($row['active'] == 'inactive'){
+          sessionAttempts($db);
+          echo "The account your are trying to access is inactive. Please contact your administrator to activate the account. \r\n" ;
+        }else{
+            $_SESSION['logged_in'] = "true";
+            $_SESSION['userID'] = $row['id'];
+            $_SESSION['fullname'] = $row['fullname'];
+            $_SESSION['role'] = $row['role'];
+            $_SESSION['pic'] = $row['pic'];
+            $_SESSION['username'] = $row['username'];
+            $_SESSION['userNo'] = $row['userNo'];
+            $_SESSION['timedin'] = "";
+            $_SESSION['shiftCode'] = 0;
+            $userId = $row['id'];
+            
+            $result = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `action`) VALUES ('$userId','logged in')");
+            $result->execute(array());
+            
+            if($row['role'] =="admin"){
+              $_SESSION['timedin'] = "admin";
+            }else{
+                $result = $db->prepare("SELECT * FROM tbl_shift WHERE employeeId=".$_SESSION['userID']." AND endShift IS NULL ORDER BY ID DESC LIMIT 1");
+                $result->execute();
+                if($row = $result->fetch()){
+                    $_SESSION['timedin'] = $row[3];
+                    $_SESSION['shiftCode'] = $row[0];
+                }
+            }
+            $ipaddress = $_SERVER['REMOTE_ADDR'];
+            $sql = "DELETE FROM tbl_attempts WHERE ipaddress='$ipaddress'";
+            $q = $db->prepare($sql);
+            $q->execute(array());
+            exit();
+        }
+    }else{
+      echo "please enter a valid username and password. \r\n" ;
+      sessionAttempts($db);
+    }
+  } //end of login 
+  
+  function sessionAttempts($db){
+      $ipaddress = $_SERVER['REMOTE_ADDR'];
+      $result = $db->prepare("INSERT INTO tbl_attempts(ipaddress, numberofattempts) VALUES ('$ipaddress',1) ON DUPLICATE KEY UPDATE numberofattempts = numberofattempts+1");
+      $result->execute(array());
+        
+      $result = $db->prepare("SELECT numberofattempts FROM tbl_attempts WHERE ipaddress = '$ipaddress'");
+      $result->execute();
+      if($row = $result->fetch()){
+        $_SESSION['att'] = $row['numberofattempts'];
+        echo "Number of attempts for ip-address ".$ipaddress. " : " .$row['numberofattempts']."\r\n";
+      }
+      $date = date('Y/m/d H:i:s');
+      echo "where is the poop?!\n\r".$_SESSION['shiftCode'];
+      echo $date;
+      exit();
+  }
+  
 
-if (isset($_POST['lastname'])) {
+  
+// user logout
+  if ($_GET['do'] == 'logout') { //Logout
+    $userID = $_SESSION['userID'];
+    $r = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `action`) VALUES ('$userID','logged out')");
+    $r->execute(array());
+    session_destroy();
+    echo "<script type='text/javascript'>window.location.replace('http://www.cielosburger.online');</script>";
+    exit();
+  }
+  
+// user autologout
+//   if ((time() - $_SESSION['timestamp']) > 10) { 
+//       echo "15 minutes is over!";
+//       // $userID = $_SESSION['userID'];
+//       // $action = "Logged-out.";
+//       // $r = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `dt`, `action`) VALUES ('$userID','$dt','$action')");
+//       // $r->execute(array());
+
+//       // unset($_SESSION['userID']);
+//       // unset($_SESSION['fname']);
+//       // unset($_SESSION['role']);
+//       // unset($_SESSION['username']);
+//       // $_SESSION['logged_in'] = "false";
+
+
+//       // header("location: ../index.php");
+//       // exit();
+//   }
+  
+  
+  
+  
+// add new user
+  if(isset($_POST['lastname'],$_POST['firstname'], $_POST['role'], $_POST['password'])){ //if all items are not empty
     $lastname = $_POST['lastname'];
     $firstname = $_POST['firstname'];
     $role = $_POST['role'];
-    $username = $_POST['username'];
     $password = ($_POST['password']);
-
-    $gender = $_POST['gender'];
-    $cs = $_POST['cs'];
-    $email = $_POST['email'];
-    $contact = $_POST['contact'];
-    $address = $_POST['address'];
-    $zero = '0';
-
-
-    $bday = $_POST['bday'];
-    $userNo = $_POST['userNo'];
-    $age = date('d/m/Y', strtotime(str_replace('-', '/', $bday)));
-    $age = dob($age);
-
-    if ($age < 18) {
-        $message = "Age is invalid.";
-        echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
-        exit();
-    }
-}
-
-if ($_GET['do'] == 'add') { //Insert
-
-    $temp = $_FILES["pic"]["tmp_name"];
-    $pic = $_FILES["pic"]["name"];
-    move_uploaded_file($temp, "../images/" . $pic);
-
-
-    $result = $db->prepare("SELECT * FROM tbl_users WHERE username='$username' AND password='$password' ");
+    
+    $dashofsalt = "randomkindofburger";
+    $password = md5($dashofsalt.$password);
+    $password = sha1($password);
+    $password = crypt($password,$dashofsalt);
+  }
+  
+  if($_GET['do'] == 'add'){ // add new user account
+    $subFN = mb_substr($firstname, 0, 3); //gets the last three letters of the first name
+    $newUserName = strtolower($subFN.$lastname) ;
+    $newUserName = str_replace(' ', '', $newUserName);
+    $pic = "../images/logo.png";
+    
+    $result = $db->prepare("SELECT * FROM tbl_users WHERE username='$newUserName'");
     $result->execute();
-    if ($row = $result->fetch()) {
-        $message = "User is existed.";
-        echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
-        exit();
-    } else {
-        $sql = "INSERT INTO tbl_users(pic,fname, lname, role, active, username, password,gender,cs,email,contact,address,bday,age,userNo) VALUES ('$pic','$firstname','$lastname','$role','$zero','$username','$password','$gender','$cs','$email','$contact','$address','$bday','$age','$userNo')";
-        $q = $db->prepare($sql);
-        $q->execute(array());
-        header("location: ../user.php?r=added");
-        exit();
+    
+    if($row = $result->fetch()){
+      $message = "user already exist";
+      echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
+      exit();
+    }else{
+      $userNo = $_POST['userNo'];
+      $password = str_replace(' ', '', $password);
+      $sql = "INSERT INTO tbl_users(fname, lname, role, active, username, password,userNo) VALUES ('$firstname','$lastname','$role','active','$newUserName','$password','$userNo')";
+      $q = $db->prepare($sql);
+      $q->execute(array());
+      echo "<script type='text/javascript'>history.go(-1);</script>";
+      exit();
     }
-}
-
-if (isset($_GET['do'])) if ($_GET['do'] == 'goLogin') {
-    $distime = $_SESSION['distime'];
-    if ($_SESSION['attemp'] == '0') {
-        $message = "You can now login.";
-    } else {
-        $message = "Wait until for a while.";
-    }
-    echo "<script type='text/javascript'>alert('$message');window.location.href='../../index.php';</script>";
-    exit();
-}
-
-if ($_GET['do'] == 'login') { //Login
-    $a = $_POST['username'];
-    $b = $_POST['password'];
-
-    $result = $db->prepare("SELECT *,CONCAT(fname,' ',lname) fullname FROM tbl_users WHERE username='$a'");
-    $result->execute();
-    if ($row = $result->fetch()) { $userId= $row['id'];
-        $_SESSION['userID'] = $row['id'];
-        $_SESSION['fullname'] = $row['fullname'];
-        $_SESSION['role'] = $row['role'];
-        $_SESSION['pic'] = $row['pic'];
-        $_SESSION['username'] = $row['username'];
-        $_SESSION['attemp'] = $row['logattempt'];
+  }
 
 
-  if ($row['active'] == '1') {  
-            echo "<script>alert('Unabled to login.\\nPLEASE CONTACT YOUR ADMINISTRATOR TO REACTIVATE YOUR ACCOUNT!')</script>";
-            echo "<script>window.location='../../index.php?'</script>";
-            exit();
-
-        }
-
-
-        if ($row['logattempt'] == '5') {
-            $_SESSION['attemp'] = '0';
-            echo "<script>alert('Unabled to login.\\nPLEASE CONTACT YOUR ADMINISTRATOR TO REACTIVATE YOUR ACCOUNT!')</script>";
-            echo "<script>window.location='../../index.php?'</script>";
-            exit();
-        } elseif ($b == $row['password']) {
-            $_SESSION['attemp'] = '0';
-
-            $_SESSION['logged_in'] = "true";
-            $role = $_SESSION['role'];
-            $fullname = $_SESSION['fullname'];
-
-
-            $userID = $_SESSION['userID'];
-            $action = "Logged-in.";
-            $r = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `dt`, `action`) VALUES ('$userID','$dt','$action')");
-            $r->execute(array());
-
-            //ShiftCode
-
-            $res = $db->prepare("SELECT * FROM tbl_ualt WHERE `action`='Logged-in.' ORDER BY ID DESC LIMIT 1");
-            $res->execute();
-            if ($r = $res->fetch()) {
-                    if($r['userId']==$userId){
-                        $_SESSION['shiftCode'] = date('Ymd',$r['dt']) . '-' .$userId;
-                    }else{
-                        $_SESSION['shiftCode'] = date('Ymd') . '-' .$userId;
-                    }
-            }
-
-
-
-            echo "<script>alert('Welcome $role $fullname')</script>";
-            echo "<script>window.location='../index.php'</script>";
-            exit();
-
-        } else {
-            $_SESSION['attemp'] = $_SESSION['attemp'] + 1;
-            $stat = $_SESSION['attemp'];
-            $id = $row['id'];
-            $q = $db->prepare("UPDATE  tbl_users SET logattempt='$stat' WHERE id='$id'");
-            $q->execute(array());
-
-
-            if ($_SESSION['attemp'] == '5') {
-                $_SESSION['attemp'] = 0;
-                echo "<script>alert('Unabled to login.\\nPLEASE CONTACT YOUR ADMINISTRATOR TO REACTIVATE YOUR ACCOUNT!')</script>";
-                echo "<script>window.location='../../index.php?'</script>";
-                exit();
-            } else {
-
-                ?>
-                <script> alert('Invalid username or password. attempt : <?php echo $stat;?>'); </script>
-                <script>window.location = '../../index.php';</script>
-
-            <?php }
-        }
-    } else {
-        $_SESSION['attemp'] = '0'; ?>
-        <script> alert('Invalid user not exist'); </script>
-        <script>window.location = '../../index.php';</script>
-        <!--check if the username and password is correct-->
-
-    <?php }
-
-}
-
-if ($_GET['do'] == 'autoLogout') { //Logout
-    $userID = $_SESSION['userID'];
-    $action = "Logged-out.";
-    $r = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `dt`, `action`) VALUES ('$userID','$dt','$action')");
-    $r->execute(array());
-
-    unset($_SESSION['userID']);
-    unset($_SESSION['fname']);
-    unset($_SESSION['role']);
-    unset($_SESSION['username']);
-    $_SESSION['logged_in'] = "false";
-
-
-    $message = "Automatic logout.";
-    echo "<script type='text/javascript'>alert('$message');window.location.href='../../index.php';</script>";
-    exit();
-
-
-}
-
-
-if ($_GET['do'] == 'logout') { //Logout
-    $userID = $_SESSION['userID'];
-    $action = "Logged-out.";
-    $r = $db->prepare("INSERT INTO `tbl_ualt`(`userID`, `dt`, `action`) VALUES ('$userID','$dt','$action')");
-    $r->execute(array());
-
-    unset($_SESSION['userID']);
-    unset($_SESSION['fname']);
-    unset($_SESSION['role']);
-    unset($_SESSION['username']);
-    $_SESSION['logged_in'] = "false";
-
-
-    $message = "Successfully logout.";
-    echo "<script type='text/javascript'>alert('$message');window.location.href='../../index.php';</script>";
-    exit();
-
-
-}
-
-if (isset($_GET['id'])) {
+// edit account
+  if(isset($_GET['id'])){
     $id = $_GET['id'];
+    
 
-    if ($_GET['do'] == 'edit') { //Edit
-        $pic = $_FILES["pic"]["name"];
-        if ($pic == "") {
-            $pic = $_POST['pic1'];
-        } else {
-            $temp = $_FILES["pic"]["tmp_name"];
-            $pic = $_FILES["pic"]["name"];
-            move_uploaded_file($temp, "../images/" . $pic);
-        }
-
-
-        $sql = "UPDATE tbl_users SET pic=?, fname=?, lname=?, role=?, active=?, username=?,gender=?,cs=?,email=?,contact=?,address=?,bday=?,age=? WHERE id=?";
-        $q = $db->prepare($sql);
-        $q->execute(array($pic, $firstname, $lastname, $role, $zero, $username, $gender, $cs, $email, $contact, $address, $bday, $age, $id));
-        header("location: ../user.php?r=updated");
+    if ($_GET['do'] == 'edit') {
+      $active = $_POST['active'];
+      $sql = "UPDATE tbl_users SET fname=?, lname=?, role=?, active=? WHERE id=?";
+      $q = $db->prepare($sql);
+      $q->execute(array($firstname, $lastname, $role, $active,$id));
+      echo "<script type='text/javascript'>history.go(-1);</script>";
     }
 
     if ($_GET['do'] == 'delete') { //Deactive
-        $q = $db->prepare("UPDATE tbl_users SET active='1' WHERE id='$id'");
-        $q->execute(array());
-        header("location: ../user.php?r=deleted");
-    }
-
-    if ($_GET['do'] == 'changePassword') { //Changepassword
-        $cpassword = ($_POST['cPassword']);
-        $rpassword = ($_POST['rPassword']);
-
-
-        $npassword = ($_POST['nPassword']);
-        $result = $db->prepare("SELECT * FROM tbl_users WHERE id='$id' AND password='$cpassword'");
-        $result->execute();
-        if ($row = $result->fetch()) {
-            $q = $db->prepare("UPDATE tbl_users SET password='$npassword' WHERE id='$id'");
-            $q->execute(array());
-            header("location: ../user.php?r=updated");
-        } else {
-            $message = "Invalid password.";
-            echo "<script type='text/javascript'>alert('$message');window.location.href='../user.php';</script>";
-            exit();
-
-        }
+      $sql = "DELETE FROM tbl_users WHERE id=".$id."";
+      $q = $db->prepare($sql);
+      $q->execute(array());
+      echo "<script type='text/javascript'>history.go(-1);</script>";
     }
 
     if ($_GET['do'] == 'changePasswordUser') { //Changepassword
-        $cpassword = ($_POST['cPassword']);
-        $npassword = ($_POST['nPassword']);
-        $rpassword = ($_POST['rPassword']);
+      $newPass = ($_POST['newPassword']);
+      $retypePass = ($_POST['retypePassword']);
 
-        if ($cpassword <> $rpassword) {
-            $message = "Invalid re-type password.";
-            echo "<script type='text/javascript'>alert('$message');window.location.href='../user.php';</script>";
-            exit();
-        }
-
-
-        $result = $db->prepare("SELECT * FROM tbl_users WHERE id='$id' AND password='$cpassword'");
-        $result->execute();
-        if ($row = $result->fetch()) {
-            $q = $db->prepare("UPDATE tbl_users SET password='$npassword' WHERE id='$id'");
-            $q->execute(array());
-            $message = "Successfully changed.";
-            echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
-            exit();
-        } else {
-            $message = "Invalid password.";
-            echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
-            exit();
-
-        }
+      if ($newPass <> $retypePass) {
+          $message = "new password did not match, please type again";
+          echo "<script type='text/javascript'>alert('$message');window.location.href='../user.php';</script>";
+          exit();
+      }
+      $dashofsalt = "randomkindofburger";
+      $newPass = md5($dashofsalt.$newPass);
+      $newPass = sha1($newPass);
+      $newPass = crypt($newPass,$dashofsalt);
+      $result = $db->prepare("SELECT * FROM tbl_users WHERE id='$id'");
+      $result->execute();
+      if ($row = $result->fetch()) {
+        $q = $db->prepare("UPDATE tbl_users SET password='$newPass' WHERE id='$id'");
+        $q->execute(array());
+        $message = "password successfully changed";
+        echo "<script type='text/javascript'>alert('$message');history.go(-1);</script>";
+        exit();
+      }
     }
-
-    function ualt($action)
-    {
-        date_default_timezone_set('Asia/Manila');
-        $dt = date('Y-m-d h:i:s');
-        $r = $db->prepare("INSERT INTO `tbl_ualt`(`id`, `dt`, `action`) VALUES ('$userID','$dt','$action')");
-        $r->execute(array());
-    }
-
-}
+  }
 
 
 ?>
